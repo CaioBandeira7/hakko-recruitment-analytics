@@ -1,0 +1,126 @@
+// =====================================================================
+// ZoomCharts 4U Challenge – Recruitment | Medidas v2.2 (tabela: _Measures)
+// Validar cada medida contra gabarito_auditoria_medidas.xlsx
+// =====================================================================
+
+// ---------- 01 | Base ----------
+Recruitment Spend = SUM ( FactRecruitment[TotalCostEUR] )                         // €#,##0
+Advertising Spend = SUM ( FactRecruitment[AdvertisingCostEUR] )
+Agency Fees = SUM ( FactRecruitment[AgencyFeesEUR] )
+Referral Bonuses = SUM ( FactRecruitment[ReferralBonusesEUR] )
+Internal Recruitment Spend = SUM ( FactRecruitment[InternalRecruitmentCostEUR] )
+Applicants = SUM ( FactRecruitment[Applicants] )
+Qualified Applicants = SUM ( FactRecruitment[QualifiedApplicants] )
+Interviewed Candidates = SUM ( FactRecruitment[InterviewedCandidates] )
+Offers = SUM ( FactRecruitment[Offers] )
+Accepted Offers = SUM ( FactRecruitment[AcceptedOffers] )
+Hires = SUM ( FactRecruitment[Hires] )
+Campaigns = DISTINCTCOUNT ( FactRecruitment[CampaignID] )
+Recruiter Hours = SUM ( FactRecruitment[RecruiterHours] )
+
+// ---------- 02 | Funnel ----------
+Qualification Rate = DIVIDE ( [Qualified Applicants], [Applicants] )               // 0.0%
+Interview Rate = DIVIDE ( [Interviewed Candidates], [Qualified Applicants] )
+Offer Rate = DIVIDE ( [Offers], [Interviewed Candidates] )
+Offer Acceptance Rate = DIVIDE ( [Accepted Offers], [Offers] )
+Applicant to Hire Rate = DIVIDE ( [Hires], [Applicants] )
+
+// ---------- 03 | Efficiency ----------
+Cost per Hire = DIVIDE ( [Recruitment Spend], [Hires] )
+Cost per Qualified Applicant = DIVIDE ( [Recruitment Spend], [Qualified Applicants] )
+Avg Time to Fill = DIVIDE ( SUM ( FactRecruitment[TotalTimeToFillDays] ), [Hires] )  // 0.0 "days"
+Recruiter Hours per Hire = DIVIDE ( [Recruiter Hours], [Hires] )
+
+// ---------- 04 | Quality (mature cohorts only) ----------
+Eligible Hires 90d = SUM ( FactRecruitment[Eligible90Hires] )                     // já zero em coortes imaturas
+Passed Probation 90d = CALCULATE ( SUM ( FactRecruitment[PassedProbation90] ), FactRecruitment[Mature90] = 1 )
+Early Leavers 90d = CALCULATE ( SUM ( FactRecruitment[EarlyLeavers90] ), FactRecruitment[Mature90] = 1 )
+Probation Pass Rate 90d = DIVIDE ( [Passed Probation 90d], [Eligible Hires 90d] )
+Early Leaver Rate 90d = DIVIDE ( [Early Leavers 90d], [Eligible Hires 90d] )
+
+Eligible Hires 180d = SUM ( FactRecruitment[Eligible180Hires] )
+Retained Hires 180d = CALCULATE ( SUM ( FactRecruitment[Retained180] ), FactRecruitment[Mature180] = 1 )
+Successful Hires 180d = CALCULATE ( SUM ( FactRecruitment[Successful180] ), FactRecruitment[Mature180] = 1 )
+Retention Rate 180d = DIVIDE ( [Retained Hires 180d], [Eligible Hires 180d] )
+Success Rate 180d = DIVIDE ( [Successful Hires 180d], [Eligible Hires 180d] )
+Avg Performance Score =                                                            // 0.00
+DIVIDE (
+    CALCULATE ( SUM ( FactRecruitment[PerformanceScoreTotal] ), FactRecruitment[Mature180] = 1 ),
+    CALCULATE ( SUM ( FactRecruitment[PerformanceRatedHires] ), FactRecruitment[Mature180] = 1 )
+)
+
+// ---------- 05 | Value ----------
+Mature Recruitment Spend 180d = CALCULATE ( [Recruitment Spend], FactRecruitment[Mature180] = 1 )
+Cost per Successful Hire 180d = DIVIDE ( [Mature Recruitment Spend 180d], [Successful Hires 180d] )
+
+// Alocação proporcional estimada – explicar premissa no tooltip
+Estimated Unsuccessful Spend 180d =
+VAR Rate = [Success Rate 180d]
+RETURN IF ( NOT ISBLANK ( Rate ), [Mature Recruitment Spend 180d] * ( 1 - Rate ) )
+
+Value Index =                                                                       // >1 = melhor que a empresa
+DIVIDE (
+    CALCULATE ( [Cost per Successful Hire 180d], REMOVEFILTERS ( DimChannel ) ),
+    [Cost per Successful Hire 180d]
+)
+
+// ---------- 06 | Maturity ----------
+Maturity Coverage 180d = DIVIDE ( [Eligible Hires 180d], [Hires] )
+Mature Campaign Share 180d =
+DIVIDE ( CALCULATE ( [Campaigns], FactRecruitment[Mature180] = 1 ), [Campaigns] )
+
+Cohort Warning =
+VAR Share = [Mature Campaign Share 180d]
+RETURN
+IF (
+    ISFILTERED ( DimDate ) && NOT ISBLANK ( Share ) && Share < 1,
+    "Only " & FORMAT ( Share, "0%" ) & " of campaigns in this period have mature 180-day outcomes"
+)
+
+// ---------- 07 | Comparisons ----------
+Company CPH = CALCULATE ( [Cost per Hire], REMOVEFILTERS ( DimChannel ) )
+CPH vs Company % = DIVIDE ( [Cost per Hire] - [Company CPH], [Company CPH] )
+Company Success Rate 180d = CALCULATE ( [Success Rate 180d], REMOVEFILTERS ( DimChannel ) )
+Success vs Company pp = ( [Success Rate 180d] - [Company Success Rate 180d] ) * 100   // +0.0;-0.0
+
+Channel Rank by Value =
+IF (
+    ISINSCOPE ( DimChannel[Channel] ),
+    RANKX ( ALLSELECTED ( DimChannel[Channel] ), [Cost per Successful Hire 180d], , ASC, DENSE )
+)
+
+Spend PY (same period) =
+VAR MaxMonth = CALCULATE ( MAX ( DimDate[MonthNo] ), FactRecruitment )
+RETURN
+CALCULATE ( [Recruitment Spend], DATEADD ( DimDate[Date], -1, YEAR ), DimDate[MonthNo] <= MaxMonth )
+Spend YoY % = DIVIDE ( [Recruitment Spend] - [Spend PY (same period)], [Spend PY (same period)] )
+
+Hires PY (same period) =
+VAR MaxMonth = CALCULATE ( MAX ( DimDate[MonthNo] ), FactRecruitment )
+RETURN
+CALCULATE ( [Hires], DATEADD ( DimDate[Date], -1, YEAR ), DimDate[MonthNo] <= MaxMonth )
+Hires YoY % = DIVIDE ( [Hires] - [Hires PY (same period)], [Hires PY (same period)] )
+
+// ---------- 08 | Hero (page 1) ----------
+Hero Social CPH = CALCULATE ( [Cost per Hire], REMOVEFILTERS ( DimChannel ), DimChannel[Channel] = "Social media" )
+Hero Social Cost per Success = CALCULATE ( [Cost per Successful Hire 180d], REMOVEFILTERS ( DimChannel ), DimChannel[Channel] = "Social media" )
+Hero Referrals CPH = CALCULATE ( [Cost per Hire], REMOVEFILTERS ( DimChannel ), DimChannel[Channel] = "Employee referrals" )
+Hero Referrals Cost per Success = CALCULATE ( [Cost per Successful Hire 180d], REMOVEFILTERS ( DimChannel ), DimChannel[Channel] = "Employee referrals" )
+
+// 15% = convenção de apresentação, não teste estatístico
+Hero Headline =
+VAR S = [Hero Social Cost per Success]
+VAR R = [Hero Referrals Cost per Success]
+VAR Gap = DIVIDE ( S - R, R )
+RETURN
+SWITCH (
+    TRUE (),
+    ISBLANK ( S ) || ISBLANK ( R ), "Not enough mature hires in this selection",
+    Gap > 0.15,  "Social media costs " & FORMAT ( Gap, "0%" ) & " more per successful hire than referrals",
+    Gap < -0.15, "Referrals cost " & FORMAT ( DIVIDE ( R - S, S ), "0%" ) & " more per successful hire than social media",
+    "In this segment, both channels cost about the same per successful hire"
+)
+
+// ---------- 09 | UX ----------
+Channel Color = SELECTEDVALUE ( DimChannel[ColorHex], "#4777D5" )
+Footer Note = "180-day metrics use mature cohorts only · 2026 data through September"

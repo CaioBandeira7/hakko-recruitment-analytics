@@ -1,0 +1,156 @@
+// =====================================================================
+// hakko.io · Beyond Cost per Hire — presentation & UX measures
+// Added on top of measures_core.dax during report build
+// =====================================================================
+
+// ---------- KPI cards (locale-proof text + "—" when the selection is empty) ----------
+KPI Spend Text =
+VAR v = [Recruitment Spend]
+RETURN
+    SWITCH (
+        TRUE (),
+        ISBLANK ( v ), "—",
+        v >= 1000000, FORMAT ( v / 1000000, "€0.00" ) & "M",
+        FORMAT ( v / 1000, "€0.0" ) & "K"
+    )
+
+KPI Hires Text =
+VAR v = [Hires]
+RETURN IF ( ISBLANK ( v ), "—", FORMAT ( v, "#,0" ) )
+
+KPI CPH Text =
+VAR v = [Cost per Hire]
+RETURN IF ( ISBLANK ( v ), "—", FORMAT ( v, "€#,0" ) )
+
+KPI Success Text =
+VAR v = [Success Rate 180d]
+RETURN IF ( ISBLANK ( v ), "—", FORMAT ( v, "0.0%" ) )
+
+KPI CPS Text =
+VAR v = [Cost per Successful Hire 180d]
+RETURN IF ( ISBLANK ( v ), "—", FORMAT ( v, "€#,0" ) )
+
+KPI Probation Text =
+VAR v = [Probation Pass Rate 90d]
+RETURN IF ( ISBLANK ( v ), "—", FORMAT ( v, "0.0%" ) )
+
+KPI Retention Text =
+VAR v = [Retention Rate 180d]
+RETURN IF ( ISBLANK ( v ), "—", FORMAT ( v, "0.0%" ) )
+
+KPI Performance Text =
+VAR v = [Avg Performance Score]
+RETURN IF ( ISBLANK ( v ), "—", FORMAT ( v, "0.00" ) )
+
+KPI Unsuccessful Spend Text =
+VAR v = [Estimated Unsuccessful Spend 180d]
+RETURN
+    SWITCH (
+        TRUE (),
+        ISBLANK ( v ), "—",
+        v >= 1000000, FORMAT ( v / 1000000, "€0.00" ) & "M",
+        FORMAT ( v / 1000, "€0.0" ) & "K"
+    )
+
+KPI Mature Share Text =
+VAR v = [Mature Campaign Share 180d]
+RETURN IF ( ISBLANK ( v ), "—", FORMAT ( v, "0%" ) )
+
+KPI Days Text =
+VAR v = [Avg Time to Fill]
+RETURN IF ( ISBLANK ( v ), "—", FORMAT ( v, "0.0" ) & " days" )
+
+// ---------- Hero (page 1) ----------
+Hero Headline =
+VAR S = [Hero Social Cost per Success]
+VAR R = [Hero Referrals Cost per Success]
+VAR Gap = DIVIDE ( S - R, R )
+RETURN
+    SWITCH (
+        TRUE (),
+        ISBLANK ( [Hires] ), "No campaigns match this selection. Try widening the filters",
+        ISBLANK ( S ) || ISBLANK ( R ), "Not enough mature hires in this selection to compare",
+        Gap > 0.15, "Social media costs " & FORMAT ( Gap, "0%" ) & " more per successful hire than employee referrals",
+        Gap < -0.15, "Employee referrals cost " & FORMAT ( DIVIDE ( R - S, S ), "0%" ) & " more per successful hire than social media",
+        "In this segment, both channels cost about the same per successful hire"
+    )
+
+Hero Social CPS Text =
+VAR v = [Hero Social Cost per Success]
+RETURN IF ( ISBLANK ( v ), "—", FORMAT ( v, "€#,0" ) )
+
+Hero Referrals CPS Text =
+VAR v = [Hero Referrals Cost per Success]
+RETURN IF ( ISBLANK ( v ), "—", FORMAT ( v, "€#,0" ) )
+
+Hero Social Support =
+VAR c = [Hero Social CPH]
+VAR h = [Hero Social Hires per Success]
+RETURN
+    SWITCH (
+        TRUE (),
+        ISBLANK ( c ), "—",
+        ISBLANK ( h ), FORMAT ( c, "€#,0" ) & " per hire  ·  no mature outcomes yet",
+        FORMAT ( c, "€#,0" ) & " per hire  ·  " & FORMAT ( h, "0.0" ) & " hires for one that succeeds"
+    )
+
+Hero Referrals Support =
+VAR c = [Hero Referrals CPH]
+VAR h = [Hero Referrals Hires per Success]
+RETURN
+    SWITCH (
+        TRUE (),
+        ISBLANK ( c ), "—",
+        ISBLANK ( h ), FORMAT ( c, "€#,0" ) & " per hire  ·  no mature outcomes yet",
+        FORMAT ( c, "€#,0" ) & " per hire  ·  " & FORMAT ( h, "0.0" ) & " hires for one that succeeds"
+    )
+
+// ---------- ZoomCharts donut helpers (return BLANK when no spend, so empty slices are not drawn) ----------
+Channel Color =
+IF ( NOT ISBLANK ( [Recruitment Spend] ), SELECTEDVALUE ( DimChannel[ColorHex], "#14213D" ) )
+
+KPI Label Spend =
+IF ( NOT ISBLANK ( [Recruitment Spend] ), "Total spend" )
+
+// ---------- Insight cards (page 2) — minimum sample of 5 ----------
+Best Value Channel =
+VAR T =
+    FILTER (
+        ADDCOLUMNS ( VALUES ( DimChannel[Channel] ), "@v", [Cost per Successful Hire 180d], "@n", [Eligible Hires 180d] ),
+        NOT ISBLANK ( [@v] ) && [@n] >= 5
+    )
+VAR B = TOPN ( 1, T, [@v], ASC )
+RETURN IF ( COUNTROWS ( T ) > 0, MAXX ( B, DimChannel[Channel] ) & "  ·  " & FORMAT ( MAXX ( B, [@v] ), "€#,0" ) & " / successful hire", "Not enough data in this selection" )
+
+Most Expensive Channel =
+VAR T =
+    FILTER (
+        ADDCOLUMNS ( VALUES ( DimChannel[Channel] ), "@v", [Cost per Successful Hire 180d], "@n", [Eligible Hires 180d] ),
+        NOT ISBLANK ( [@v] ) && [@n] >= 5
+    )
+VAR B = TOPN ( 1, T, [@v], DESC )
+RETURN IF ( COUNTROWS ( T ) > 0, MAXX ( B, DimChannel[Channel] ) & "  ·  " & FORMAT ( MAXX ( B, [@v] ), "€#,0" ) & " / successful hire", "Not enough data in this selection" )
+
+Lowest Success Channel =
+VAR T =
+    FILTER (
+        ADDCOLUMNS ( VALUES ( DimChannel[Channel] ), "@v", [Success Rate 180d], "@n", [Eligible Hires 180d] ),
+        NOT ISBLANK ( [@v] ) && [@n] >= 5
+    )
+VAR B = TOPN ( 1, T, [@v], ASC )
+RETURN IF ( COUNTROWS ( T ) > 0, MAXX ( B, DimChannel[Channel] ) & "  ·  " & FORMAT ( MAXX ( B, [@v] ), "0%" ) & " succeed at day 180", "Not enough data in this selection" )
+
+Fastest Channel =
+VAR T =
+    FILTER (
+        ADDCOLUMNS ( VALUES ( DimChannel[Channel] ), "@v", [Avg Time to Fill], "@n", [Hires] ),
+        NOT ISBLANK ( [@v] ) && [@n] >= 5
+    )
+VAR B = TOPN ( 1, T, [@v], ASC )
+RETURN IF ( COUNTROWS ( T ) > 0, MAXX ( B, DimChannel[Channel] ) & "  ·  " & FORMAT ( MAXX ( B, [@v] ), "0" ) & " days to fill", "Not enough data in this selection" )
+
+// ---------- Report-page tooltip ----------
+Tooltip Title =
+VAR c = SELECTEDVALUE ( DimChannel[Channel], "All channels" )
+VAR p = SELECTEDVALUE ( DimChannel[Provider] )
+RETURN IF ( ISFILTERED ( DimChannel[Provider] ) && NOT ISBLANK ( p ), p, c )
